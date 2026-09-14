@@ -10,7 +10,7 @@ bronze_df=spark.readStream.format("cloudFiles") \
   .option("recuedDataColumn", "rescued_data") \
   .load(source_path)\
   .withColumn("ingestion_time", current_timestamp())\
-  .withColumn("path",col("_metadata.file_path")
+  .withColumn("path",col("_metadata.file_path"))
 bronze_query=bronze_df.writeStream \
   .format("delta") \
   .option("checkpointLocation", checkpoint_path) \

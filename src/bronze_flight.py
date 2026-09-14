@@ -14,7 +14,7 @@ bronze_df=spark.readStream.format("cloudFiles") \
 bronze_query=bronze_df.writeStream \
   .format("delta") \
   .option("checkpointLocation", checkpoint_path) \
-  .trigger(availableNows=True) \
-  .toTable(workspace.flight_tracking.bronze)
+  .trigger(availableNow=True) \
+  .toTable("workspace.flight_tracking.bronze")
 
   

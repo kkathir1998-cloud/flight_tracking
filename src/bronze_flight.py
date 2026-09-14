@@ -1,3 +1,4 @@
+from pyspark.sql.functions import current_timestamp
 source_path="/Volumes/workspace/flight_tracking/incoming"
 schema_path="/Volumes/workspace/flight_tracking/schema/bronze"
 checkpoint_path="/Volumes/workspace/flight_tracking/checkpoints/bronze"

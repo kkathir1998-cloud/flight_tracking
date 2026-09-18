@@ -1,36 +1,54 @@
-from delta.tables import DeltaTable
 from pyspark.sql.functions import (
     col,
     from_json,
-    explode,
-    from_unixtime,
-    when
+    explode
 )
 from pyspark.sql.types import ArrayType, StringType
 
+# =====================================================
 # Configuration
-checkpoint = "/Volumes/workspace/flight_tracking/checkpoints/silver"
-target_table = "workspace.flight_tracking.silver"
+# =====================================================
 
-# OpenSky schema
+checkpoint = "/Volumes/workspace/flight_tracking/checkpoints/silver"
+checkpoint2 = "/Volumes/workspace/flight_tracking/checkpoints/silver_quar"
+
+target_table = "workspace.flight_tracking.silver"
+target_table2 = "workspace.flight_tracking.silver_quar"
+
+# =====================================================
+# OpenSky Schema
+# =====================================================
+
 parsed_schema = ArrayType(ArrayType(StringType()))
 
-# Read Bronze stream
+# =====================================================
+# Read Bronze Stream
+# =====================================================
+
 df = spark.readStream.table("workspace.flight_tracking.bronze")
 
+# =====================================================
 # Parse JSON
+# =====================================================
+
 parsed_df = df.withColumn(
     "parsed_states",
     from_json(col("states"), parsed_schema)
 )
 
-# Explode aircraft records
+# =====================================================
+# Explode Aircraft Records
+# =====================================================
+
 explode_df = parsed_df.withColumn(
     "aircraft",
     explode(col("parsed_states"))
 )
 
-# Flatten aircraft data
+# =====================================================
+# Flatten Aircraft Data
+# =====================================================
+
 flight_df = explode_df.select(
     col("aircraft")[0].alias("icao24"),
     col("aircraft")[1].alias("callsign"),
@@ -53,55 +71,57 @@ flight_df = explode_df.select(
     col("ingestion_time")
 )
 
-# Silver transformations
-silver_df = (
-    flight_df
-    .withColumn(
-        "time_position",
-        from_unixtime(col("time_position"), "yyyy-MM-dd HH:mm:ss")
-    )
-    .withColumn(
-        "last_contact",
-        from_unixtime(col("last_contact"), "yyyy-MM-dd HH:mm:ss")
-    )
-    .withColumn(
-        "position_valid",
-        when(
-            col("latitude").isNotNull()
-            & col("longitude").isNotNull()
-            & (col("longitude") >= -180)
-            & (col("longitude") <= 180)
-            & (col("latitude") >= -90)
-            & (col("latitude") <= 90),
-            True
-        ).otherwise(False)
-    )
-    .dropDuplicates(["icao24"])
+# =====================================================
+# Valid Records (Silver)
+# =====================================================
+
+silver_df = flight_df.filter(
+    col("icao24").isNotNull()
+    & col("origin_country").isNotNull()
+    & col("longitude").isNotNull()
+    & col("latitude").isNotNull()
 )
 
-# MERGE logic
-def process_batch(batch_df, batch_id):
+# =====================================================
+# Quarantine Records
+# =====================================================
 
-    target = DeltaTable.forName(spark, target_table)
+silver_df_quar = flight_df.filter(
+    col("icao24").isNull()
+    | col("origin_country").isNull()
+    | col("longitude").isNull()
+    | col("latitude").isNull()
+)
 
-    (
-        target.alias("t")
-        .merge(
-            batch_df.alias("s"),
-            "t.icao24 = s.icao24"
-        )
-        .whenMatchedUpdateAll()
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
+# =====================================================
+# Write Silver Table
+# =====================================================
 
-# Start stream
 silver_query = (
     silver_df.writeStream
-    .foreachBatch(process_batch)
+    .format("delta")
     .option("checkpointLocation", checkpoint)
     .trigger(availableNow=True)
-    .start()
+    .toTable(target_table)
 )
 
+# =====================================================
+# Write Silver Quarantine Table
+# =====================================================
+
+silver_quar_query = (
+    silver_df_quar.writeStream
+    .format("delta")
+    .option("checkpointLocation", checkpoint2)
+    .trigger(availableNow=True)
+    .toTable(target_table2)
+)
+
+# =====================================================
+# Wait Until Both Streams Finish
+# =====================================================
+
 silver_query.awaitTermination()
+silver_quar_query.awaitTermination()
+
+print("Silver and Silver Quarantine loads completed successfully.")

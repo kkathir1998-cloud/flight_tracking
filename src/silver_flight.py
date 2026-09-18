@@ -81,6 +81,7 @@ silver_df = flight_df.filter(
     & col("longitude").isNotNull()
     & col("latitude").isNotNull()
 )
+silver_df=silver_df..withWatermark("ingestion_time", "1 hour").dropDuplicates(["icao24","ingestion_time"])
 
 # =====================================================
 # Quarantine Records
@@ -100,6 +101,7 @@ silver_df_quar = flight_df.filter(
 silver_query = (
     silver_df.writeStream
     .format("delta")
+    .outputMode("append")
     .option("checkpointLocation", checkpoint)
     .trigger(availableNow=True)
     .toTable(target_table)
@@ -112,6 +114,7 @@ silver_query = (
 silver_quar_query = (
     silver_df_quar.writeStream
     .format("delta")
+    .outputMode("append")
     .option("checkpointLocation", checkpoint2)
     .trigger(availableNow=True)
     .toTable(target_table2)

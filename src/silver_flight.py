@@ -81,7 +81,7 @@ silver_df = flight_df.filter(
     & col("longitude").isNotNull()
     & col("latitude").isNotNull()
 )
-silver_df=silver_df..withWatermark("ingestion_time", "1 hour").dropDuplicates(["icao24","ingestion_time"])
+silver_df=silver_df.withWatermark("ingestion_time", "1 hour").dropDuplicates(["icao24","ingestion_time"])
 
 # =====================================================
 # Quarantine Records
